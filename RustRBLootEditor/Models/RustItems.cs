@@ -1,5 +1,4 @@
 ﻿using HtmlAgilityPack;
-using Newtonsoft.Json.Linq;
 using Prism.Mvvm;
 using RustRBLootEditor.Helpers;
 using System;
@@ -15,6 +14,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Security.Cryptography.X509Certificates;
 
 namespace RustRBLootEditor.Models
 {
@@ -37,7 +37,7 @@ namespace RustRBLootEditor.Models
             return Items.FirstOrDefault(s => s.shortName == shortname);
         }
 
-        public async Task Load()
+        public async Task Load(string steampath)
         {
             string debugpath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             string jsonpath = Path.Combine(debugpath, "Assets", "items.json");
@@ -46,53 +46,111 @@ namespace RustRBLootEditor.Models
             {
                 List<RustItem> items = await Common.LoadJsonAsync<List<RustItem>>(jsonpath);
 
+                await FetchNewItems(steampath, items);
+
+                await LoadImages(items);
+
                 Items = new ObservableCollection<RustItem>(items.OrderBy(x => x.displayName));
             }
-
-            //Items = new ObservableCollection<RustItem>(Common.LoadJsonResource<List<RustItem>>("RustRBLootEditor.Assets.items.json"));
-            //SyncShortnames();
         }
 
-        public void SyncShortnames()
+        public async Task FetchNewItems(string steampath, List<RustItem> currentItems)
         {
-            foreach(var item in _defaults)
+            if (string.IsNullOrEmpty(steampath)) return;
+
+            string itemsDirectory = Path.Combine(steampath, "steamapps\\common\\Rust\\Bundles\\items");
+
+            if (!Directory.Exists(itemsDirectory)) return;
+
+            List<string> itemfiles = Directory.EnumerateFiles(itemsDirectory, "*.png").ToList();
+
+            bool NewItemsFound = false;
+
+            foreach (var item in itemfiles.ToList())
             {
-                if(Items.FirstOrDefault(s=>s.shortName == item.Key) == null)
+                string shortname = Path.GetFileName(item).Replace(".png", "");
+
+                if (File.Exists(item.Replace(".png", ".json")) && !currentItems.Any(s => s.shortName == shortname))
                 {
-                    Items.Add(new RustItem() { category = "Unknown", shortName = item.Key, displayName = item.Key, image = new Uri("https://rustlabs.com/img/items180/" + item.Key + ".png") });
+                    BundleItem bundleItem = await Common.LoadJsonAsync<BundleItem>(item.Replace(".png", ".json"));
+
+                    if (string.IsNullOrEmpty(bundleItem.Name) || (!bundleItem.isWearable && !bundleItem.isUsable && !bundleItem.isHoldable) || bundleItem.ItemType == "Liquid") continue;
+
+                    await ResizeAndSaveImageFromSteam(shortname, steampath);
+
+                    currentItems.Add(new RustItem()
+                    {
+                        shortName = bundleItem.shortname,
+                        category = bundleItem.Category,
+                        displayName = bundleItem.Name
+                    });
+
+                    NewItemsFound = true;
                 }
             }
 
-            for (int i = Items.Count-1; i >= 0; i--)
+            if (NewItemsFound)
             {
-                if (!_defaults.ContainsKey(Items[i].shortName))
-                {
-                    Items.RemoveAt(i);
-                }
+                string debugpath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                string jsonpath = Path.Combine(debugpath, "Assets", "items.json");
+
+                Common.SaveJsonNewton(currentItems, jsonpath);
             }
         }
 
-        private readonly Dictionary<string, int> _defaults = new Dictionary<string, int>
+        public async Task ResizeAndSaveImageFromSteam(string shortname, string steampath)
         {
-        };
+            string debugpath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            string itempath = Path.Combine(debugpath, "Assets", "RustItems", $"{shortname}.png");
+            if (File.Exists(itempath)) return;
+
+            string itemSteamPath = Path.Combine(steampath, $"steamapps\\common\\Rust\\Bundles\\items\\{shortname}.png");
+
+            using FileStream fs = new FileStream(itemSteamPath, FileMode.Open);
+            using System.Drawing.Image source = new Bitmap(fs);
+            using System.Drawing.Image destination = new Bitmap(180, 180);
+
+            using (var g = Graphics.FromImage(destination))
+            {
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+                g.DrawImage(source, new Rectangle(0, 0, 180, 180), new Rectangle(0, 0, (int)source.Width, (int)source.Height), GraphicsUnit.Pixel);
+            }
+            var stream = new MemoryStream();
+            destination.Save(itempath, ImageFormat.Png);
+        }
+
+        public async Task LoadImages(List<RustItem> currentItems)
+        {
+            foreach (var item in currentItems)
+            {
+                BitmapSource _src = null;
+                string debugpath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                string itemImagePath = Path.Combine(debugpath, "Assets", "RustItems", $"{item.shortName}.png");
+
+                BitmapImage noImage = new BitmapImage(new Uri("/RustRBLootEditor;component/Assets/unavailable.png", UriKind.Relative));
+
+                if (File.Exists(itemImagePath))
+                {
+                    item.ImageSource = await Task.Run(() =>
+                    {
+                        using (var fileStream = new FileStream(
+                            itemImagePath, FileMode.Open, FileAccess.Read))
+                        {
+                            return BitmapFrame.Create(
+                                fileStream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                        }
+                    });
+                }
+                else
+                {
+                    item.ImageSource = noImage;
+                }
+            }
+        }
     }
 
     public class RustItem : BindableBase
     {
-        private string _id;
-        public string id
-        {
-            get { return _id; }
-            set { SetProperty(ref _id, value); }
-        }
-
-        private Uri _image;
-        public Uri image
-        {
-            get { return _image; }
-            set { SetProperty(ref _image, value); }
-        }
-
         private string _displayName;
         public string displayName
         {
@@ -114,40 +172,6 @@ namespace RustRBLootEditor.Models
             set { SetProperty(ref _category, value); }
         }
 
-        BitmapSource _src = null;
-        static readonly BitmapImage noImage = new BitmapImage(new Uri("/RustRBLootEditor;component/Assets/unavailable.png", UriKind.Relative));
-        public ImageSource Source
-        {
-            get
-            {
-                if (_src is null && File.Exists($"F:\\Games\\steamapps\\common\\Rust\\Bundles\\items\\{shortName}.png"))
-                {
-                    using FileStream fs = new FileStream($"F:\\Games\\steamapps\\common\\Rust\\Bundles\\items\\{shortName}.png", FileMode.Open);
-                    using Image source = new Bitmap(fs);
-                    using Image destination = new Bitmap(64, 64);
-
-                    using (var g = Graphics.FromImage(destination))
-                    {
-                        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
-                        g.DrawImage(source, new Rectangle(0, 0, 64, 64), new Rectangle(0, 0, (int)source.Width, (int)source.Height), GraphicsUnit.Pixel);
-                    }
-                    var stream = new MemoryStream();
-                    destination.Save(stream, ImageFormat.Png);
-
-                    var image = new BitmapImage();
-                    image.BeginInit();
-                    image.StreamSource = stream;
-                    image.EndInit();
-
-                    var i = image.Clone();
-                    i.Freeze();
-
-                    _src = i;
-                }
-                else if (_src is null)
-                    _src = noImage;
-                return _src;
-            }
-        }
+        public ImageSource ImageSource { get; set; } 
     }
 }

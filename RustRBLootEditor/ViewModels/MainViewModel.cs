@@ -157,6 +157,8 @@ namespace RustRBLootEditor.ViewModels
 
             LootTableFile = new LootTableFile();
 
+            GetSteamPath();
+
             BgName = "rust-bg.jpg";
 
             //Common.DownloadImages(AllItems.Items.ToList(), "Assets\\RustItems\\");
@@ -168,16 +170,14 @@ namespace RustRBLootEditor.ViewModels
 
             ApplyMultiplierCommand = new DelegateCommand(ApplyMultiplier);
             CancelMultiplierCommand = new DelegateCommand(CancelMultiplier);
-
-            GetSteamPath();
         }
 
         public async Task LoadGameItems()
         {
             ShowLoading("Loading Game Files...");
-            
+
             if (AllItems != null)
-                await AllItems.Load();
+                await AllItems.Load(SteamPath);
 
             HideLoading();
         }
@@ -219,8 +219,8 @@ namespace RustRBLootEditor.ViewModels
                 {
                     RustItem tmpItem = AllItems.GetRustItem(item.shortname);
 
-                    if(item.skin > 0)
-                        if(!skins.Contains(item.skin))
+                    if (item.skin > 0)
+                        if (!skins.Contains(item.skin))
                             skins.Add(item.skin);
 
                     if (tmpItem != null)
@@ -317,6 +317,11 @@ namespace RustRBLootEditor.ViewModels
             SelectedItemOriginalSkin = lootItem.skin;
             SelectedEditItem = lootItem;
             LootItemEditorOn = true;
+
+            if (!ValidateStackSize(SelectedEditItem))
+            {
+                MessageBox.Show("This item amount is more than 10x its stack size, it is recommended to set a higher stack size or set it to -1.", "Stack Size Warning");
+            }
         }
 
         public async void HideLootItemEditor()
@@ -366,7 +371,7 @@ namespace RustRBLootEditor.ViewModels
                     if (TempBulkTargetFields.probability)
                         item.probability = TempBulkEditItem.probability;
 
-                    if(TempBulkTargetFields.stacksize)
+                    if (TempBulkTargetFields.stacksize)
                         item.stacksize = (TempBulkEditItem.stacksize < -1) ? -1 : TempBulkEditItem.stacksize;
                 }
 
@@ -411,8 +416,8 @@ namespace RustRBLootEditor.ViewModels
                     if (TempBulkTargetFields.amountMin)
                     {
                         item.amountMin = (int)Math.Round(item.amountMin * MultiplierValue);
-                        
-                        if(item.amountMin > item.amount)
+
+                        if (item.amountMin > item.amount)
                             item.amountMin = item.amount;
                     }
 
@@ -420,7 +425,7 @@ namespace RustRBLootEditor.ViewModels
                     {
                         item.stacksize = (int)Math.Round(item.stacksize * MultiplierValue);
 
-                        if(item.stacksize < -1)
+                        if (item.stacksize < -1)
                             item.stacksize = -1;
                     }
                 }
@@ -516,6 +521,26 @@ namespace RustRBLootEditor.ViewModels
             HideLoading();
 
             return changeOccurred;
+        }
+
+        public bool ValidateProbability()
+        {
+            if (LootTableFile == null || LootTableFile.LootItems == null || LootTableFile.LootItems.Count == 0) return true;
+
+            int highPropCount = LootTableFile.LootItems.Where(s => s.probability >= 0.9f && s.amount > 0).Count();
+
+            float ratio = (float)highPropCount / (float)LootTableFile.LootItems.Count;
+
+            return ratio >= 0.8 ? true : false;
+        }
+
+        public bool ValidateStackSize(LootItem item)
+        {
+            if(item == null) return true;
+
+            float ratio = (float)item.amount / (float)item.stacksize;
+
+            return ratio < 10.0 ? true : false;
         }
     }
 }
