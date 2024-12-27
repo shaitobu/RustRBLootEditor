@@ -170,7 +170,7 @@ namespace RustRBLootEditor.ViewModels
 
             //Common.DownloadImages(AllItems.Items.ToList(), "Assets\\RustItems\\");
 
-            Status = "No file loaded...";
+            Status = "Файл не загружен...";
 
             ApplyBulkCommand = new DelegateCommand(ApplyBulk);
             CancelBulkCommand = new DelegateCommand(CancelBulk);
@@ -181,7 +181,7 @@ namespace RustRBLootEditor.ViewModels
 
         public async Task LoadGameItems()
         {
-            ShowLoading("Loading Game Files...");
+            ShowLoading("Загрузка фаилов игры...");
 
             if (AllItems != null)
                 await AllItems.Load(SteamPath);
@@ -245,7 +245,7 @@ namespace RustRBLootEditor.ViewModels
 
         public async Task LoadFile(string filepath)
         {
-            ShowLoading("Loading Loot File...");
+            ShowLoading("Загрузка фаила лута...");
             LootTableFile = new LootTableFile();
 
             Dictionary<string, string> ru_dict = new();
@@ -333,11 +333,11 @@ namespace RustRBLootEditor.ViewModels
         {
             if (LootTableFile == null || LootTableFile.LootItems == null)
             {
-                Status = "No file loaded...";
+                Status = "Файл не загружен...";
             }
             else
             {
-                Status = "Loot table file imported.. " + LootTableFile.LootItems.Count() + " items";
+                Status = "Импортировано из фаила.. " + LootTableFile.LootItems.Count() + " предметов";
             }
         }
 
@@ -349,7 +349,7 @@ namespace RustRBLootEditor.ViewModels
 
                 if (tmpitem != null)
                 {
-                    MessageBoxResult messageBoxResult = MessageBox.Show($"Loot table already contains the item \"{tmpitem.displayName}\". Are you sure you would like to add?", "Duplicate Notice", System.Windows.MessageBoxButton.YesNo);
+                    MessageBoxResult messageBoxResult = MessageBox.Show($"Предмет уже в списке\"{tmpitem.displayName}\". Хотите все равно добавить?", "Duplicate Notice", System.Windows.MessageBoxButton.YesNo);
                     if (messageBoxResult == MessageBoxResult.No) return;
                 }
 
