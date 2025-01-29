@@ -50,7 +50,7 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
             <TextBlock Grid.ColumnSpan="2" FontWeight="Bold" Foreground="White" FontFamily="Lato Bold" VerticalAlignment="Center">
-                LOOT TABLE <Run Text="{Binding MainViewModel.Filename}" Foreground="#9bcf3e"/><Run Text="    Right click to edit, delete, or multiply amounts" FontFamily="Lato Light Italic"/>
+                Таблица лута <Run Text="{Binding MainViewModel.Filename}" Foreground="#9bcf3e"/><Run Text="    ПКМ для внесения изменений" FontFamily="Lato Light Italic"/>
             </TextBlock>
             <TextBox x:Name="filtertxt" Grid.Column="2" TextChanged="filtertxt_TextChanged"/>
         </Grid>
@@ -105,9 +105,12 @@
                                 <MenuItem Header="Multiply Values" Click="MultiplyLootItem_Click" CommandParameter="{Binding}" />
                                 <Separator />
                                 <MenuItem Header="Delete items" Click="DeleteLootItem_Click" CommandParameter="{Binding}"/>
+                                <Separator />
+                                <MenuItem Header="Delete disabled only" Click="DeleteDisabledLootItem_Click" CommandParameter="{Binding}"/>
                             </ContextMenu>
                         </Grid.ContextMenu>
                         <Grid>
+                            <Image Source="/RustRBLootEditor;component/Assets/blueprintbase.png" Visibility="{Binding blueprint, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                             <Image HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="5">
                                 <Image.Source>
                                     <MultiBinding Converter="{StaticResource RelativeUriFromLootItemMultiConverter}" ConverterParameter="Assets\\RustItems">

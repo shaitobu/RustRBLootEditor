@@ -1,8 +1,6 @@
-﻿using RustRBLootEditor.Models;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Net;
 using System.Reflection;
 using System.Resources;
 using System.Runtime.Serialization.Json;
@@ -21,7 +19,7 @@ namespace RustRBLootEditor.Helpers
         private static readonly JsonSerializerOptions _options =
         new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
 
-        public static bool SaveJsonNewton<T>(T theobject, string filePath)
+        public static bool SaveJsonNewton<T>(T theobject, string filePath, Dictionary<string, string> langReplace = null)
         {
             try
             {
@@ -38,6 +36,13 @@ namespace RustRBLootEditor.Helpers
                                 WriteIndented = true
                             };
                             var jsonString = JsonConvert.SerializeObject(theobject, Formatting.Indented);
+
+                            if (langReplace != null)
+                            {
+                                foreach (var replace in langReplace)
+                                    jsonString = jsonString.Replace((string)replace.Key, (string)replace.Value);
+                            }
+
                             sw.Write(jsonString);
                         }
                     }
@@ -98,7 +103,7 @@ namespace RustRBLootEditor.Helpers
             }
         }
 
-        public static async Task<T> LoadJsonAsync<T>(string filePath)
+        public static async Task<T> LoadJsonAsync<T>(string filePath, Dictionary<string, string> langReplace = null)
         {
             T result;
             if (!System.IO.File.Exists(filePath))
@@ -116,6 +121,12 @@ namespace RustRBLootEditor.Helpers
                     {
                         int firstlineindex = filetext.IndexOf(System.Environment.NewLine);
                         filetext = filetext.Substring(firstlineindex + System.Environment.NewLine.Length);
+                    }
+
+                    if(langReplace != null)
+                    {
+                        foreach (var replace in langReplace)
+                            filetext = filetext.Replace((string)replace.Key, (string)replace.Value);
                     }
 
                     using (var ms = new MemoryStream(Encoding.Unicode.GetBytes(filetext)))

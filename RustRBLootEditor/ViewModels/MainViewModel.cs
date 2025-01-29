@@ -4,13 +4,16 @@ using Prism.Mvvm;
 using RustRBLootEditor.Helpers;
 using RustRBLootEditor.Models;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Data;
@@ -145,12 +148,16 @@ namespace RustRBLootEditor.ViewModels
             set { SetProperty(ref loadingText, value); }
         }
 
+        public static bool IsEn = true;
+
         public Dictionary<ulong, string> SkinsUrls { get; set; }
 
         public string SteamPath { get; set; }
+        public string ExePath { get; set; }
 
         public MainViewModel()
         {
+            ExePath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             LoadingModal = true;
             if (AllItems == null)
                 AllItems = new RustItems();
@@ -163,7 +170,7 @@ namespace RustRBLootEditor.ViewModels
 
             //Common.DownloadImages(AllItems.Items.ToList(), "Assets\\RustItems\\");
 
-            Status = "No file loaded...";
+            Status = "Файл не загружен...";
 
             ApplyBulkCommand = new DelegateCommand(ApplyBulk);
             CancelBulkCommand = new DelegateCommand(CancelBulk);
@@ -174,7 +181,7 @@ namespace RustRBLootEditor.ViewModels
 
         public async Task LoadGameItems()
         {
-            ShowLoading("Loading Game Files...");
+            ShowLoading("Загрузка фаилов игры...");
 
             if (AllItems != null)
                 await AllItems.Load(SteamPath);
@@ -189,7 +196,7 @@ namespace RustRBLootEditor.ViewModels
 
             if (key != null)
             {
-                SteamPath = key.GetValue("InstallPath").ToString();
+                SteamPath = key.GetValue("InstallPath")?.ToString();
                 key.Close();
             }
             else
@@ -198,20 +205,64 @@ namespace RustRBLootEditor.ViewModels
 
                 if (key != null)
                 {
-                    SteamPath = key.GetValue("InstallPath").ToString();
+                    SteamPath = key.GetValue("InstallPath")?.ToString();
                     key.Close();
+                }
+            }
+            if (string.IsNullOrEmpty(SteamPath))
+            {
+                SteamPath = "";
+                return;
+            }
+
+            string libfoldersPath = Path.Combine(SteamPath, "steamapps", "libraryfolders.vdf");
+            string driveRegex = @"[A-Z]:\\";
+
+            if (File.Exists(libfoldersPath))
+            {
+                string[] configLines = File.ReadAllLines(libfoldersPath);
+                foreach (var item in configLines)
+                {
+                    Match match = Regex.Match(item, driveRegex);
+                    if (item != string.Empty && match.Success)
+                    {
+                        string matched = match.ToString();
+                        string item2 = item.Substring(item.IndexOf(matched));
+                        item2 = item2.Replace("\\\\", "\\");
+                        item2 = item2.Replace("\"", "");
+
+                        string pat = Path.Combine(item2, "steamapps", "common", "Rust", "Rust.exe");
+
+                        if (File.Exists(pat))
+                        {
+                            SteamPath = item2;
+                            break;
+                        }
+                    }
                 }
             }
         }
 
         public async Task LoadFile(string filepath)
         {
-            ShowLoading("Loading Loot File...");
+            ShowLoading("Загрузка фаила лута...");
             LootTableFile = new LootTableFile();
 
-            List<LootItem> tmpLootItems = await Common.LoadJsonAsync<List<LootItem>>(filepath);
+            Dictionary<string, string> ru_dict = new();
 
-            if (LootTableFile.LootItems != null)
+            ru_dict.Add("\"краткое_название\"", "\"shortname\"");
+            ru_dict.Add("\"имя\"", "\"name\"");
+            ru_dict.Add("\"чертёж\"", "\"blueprint\"");
+            ru_dict.Add("\"скин\"", "\"skin\"");
+            ru_dict.Add("\"количество\"", "\"amount\"");
+            ru_dict.Add("\"мин_количество\"", "\"amountMin\"");
+            ru_dict.Add("\"вероятность\"", "\"probability\"");
+            ru_dict.Add("\"размер_стека\"", "\"stacksize\"");
+
+
+            List<LootItem> tmpLootItems = await Common.LoadJsonAsync<List<LootItem>>(filepath, ru_dict);
+
+            if (tmpLootItems != null)
             {
                 List<ulong> skins = new List<ulong>();
 
@@ -246,9 +297,25 @@ namespace RustRBLootEditor.ViewModels
             HideLoading();
         }
 
-        public void Save(string filepath)
+        public void Save(string filepath, string lang = "EN")
         {
-            Common.SaveJsonNewton(LootTableFile.LootItems, filepath);
+            Dictionary<string, string> langReplace = null;
+
+            if (lang == "RU")
+            {
+                langReplace = new();
+
+                langReplace.Add("\"shortname\"", "\"краткое_название\"");
+                langReplace.Add("\"name\"", "\"имя\"");
+                langReplace.Add("\"blueprint\"", "\"чертёж\"");
+                langReplace.Add("\"skin\"", "\"скин\"");
+                langReplace.Add("\"amount\"", "\"количество\"");
+                langReplace.Add("\"amountMin\"", "\"мин_количество\"");
+                langReplace.Add("\"probability\"", "\"вероятность\"");
+                langReplace.Add("\"stacksize\"", "\"размер_стека\"");
+            }
+
+            Common.SaveJsonNewton(LootTableFile.LootItems, filepath, langReplace);
         }
 
         public void ShowLoading(string text)
@@ -266,11 +333,11 @@ namespace RustRBLootEditor.ViewModels
         {
             if (LootTableFile == null || LootTableFile.LootItems == null)
             {
-                Status = "No file loaded...";
+                Status = "Файл не загружен...";
             }
             else
             {
-                Status = "Loot table file imported.. " + LootTableFile.LootItems.Count() + " items";
+                Status = "Импортировано из фаила.. " + LootTableFile.LootItems.Count() + " предметов";
             }
         }
 
@@ -282,7 +349,7 @@ namespace RustRBLootEditor.ViewModels
 
                 if (tmpitem != null)
                 {
-                    MessageBoxResult messageBoxResult = MessageBox.Show($"Loot table already contains the item \"{tmpitem.displayName}\". Are you sure you would like to add?", "Duplicate Notice", System.Windows.MessageBoxButton.YesNo);
+                    MessageBoxResult messageBoxResult = MessageBox.Show($"Предмет уже в списке\"{tmpitem.displayName}\". Хотите все равно добавить?", "Duplicate Notice", System.Windows.MessageBoxButton.YesNo);
                     if (messageBoxResult == MessageBoxResult.No) return;
                 }
 
@@ -294,9 +361,59 @@ namespace RustRBLootEditor.ViewModels
                     amountMin = 1,
                     amount = 1
                 });
-                LootTableFile.DoSort();
+                //LootTableFile.DoSort();
 
                 UpdateStatus();
+            }
+        }
+
+        public void AddBulkLootTableItems(List<RustItem> rustItems)
+        {
+            bool duplicateWarningShown = false;
+            bool allowDuplicate = false;
+
+            if (lootTableFile != null && lootTableFile.LootItems != null)
+            {
+                bool addedItems = false;
+                foreach (RustItem rustItem in rustItems)
+                {
+                    var tmpitem = lootTableFile.LootItems.FirstOrDefault(s => s.shortname == rustItem.shortName);
+
+                    if (tmpitem != null && !duplicateWarningShown)
+                    {
+                        MessageBoxResult messageBoxResult = MessageBox.Show($"Loot table already contains one or more of the selected items. Are you sure you would like to add duplicate items?", "Duplicate Notice", System.Windows.MessageBoxButton.YesNo);
+                        if (messageBoxResult == MessageBoxResult.No)
+                        {
+                            duplicateWarningShown = true;
+                            allowDuplicate = false;
+                            continue;
+                        }
+                        else
+                        {
+                            duplicateWarningShown = true;
+                            allowDuplicate = true;
+                        }
+                    }
+
+                    if (tmpitem != null && !allowDuplicate) continue;
+
+                    LootTableFile.LootItems.Add(new LootItem()
+                    {
+                        shortname = rustItem.shortName,
+                        displayName = rustItem.displayName,
+                        category = rustItem.category,
+                        amountMin = 1,
+                        amount = 1
+                    });
+                    addedItems = true;
+                }
+
+                if(addedItems)
+                {
+                    //LootTableFile.DoSort();
+
+                    UpdateStatus();
+                }
             }
         }
 
@@ -458,8 +575,7 @@ namespace RustRBLootEditor.ViewModels
             if (skinlist.Count == 0)
                 return false;
 
-            string exepath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            string temppath = Path.Combine(exepath, "Assets", "temp");
+            string temppath = Path.Combine(ExePath, "Assets", "temp");
 
             foreach (var skin in skinlist.ToList())
             {
@@ -497,8 +613,7 @@ namespace RustRBLootEditor.ViewModels
         {
             ShowLoading("Downloading Skins...");
             bool changeOccurred = false;
-            string exepath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            string temppath = Path.Combine(exepath, "Assets", "temp");
+            string temppath = Path.Combine(ExePath, "Assets", "temp");
 
             Directory.CreateDirectory(temppath);
 
@@ -536,7 +651,7 @@ namespace RustRBLootEditor.ViewModels
 
         public bool ValidateStackSize(LootItem item)
         {
-            if(item == null) return true;
+            if (item == null) return true;
 
             float ratio = (float)item.amount / (float)item.stacksize;
 
